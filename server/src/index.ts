@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { db, getEdges, getEvidence } from './db';
-import { cycleAfterAdding, findCycle, findRedundantEdges, mergeConflict, planMergeEdges, planPrune, queryOrder, topoLevels } from './graph';
+import { analyzeMandatory, cycleAfterAdding, findCycle, findRedundantEdges, mergeConflict, planMergeEdges, planPrune, queryOrder, topoLevels } from './graph';
 import { resetWithSample, seedIfEmpty } from './seed';
-import type { Evidence, GraphState, OrderQueryResult, OrderWitness, PruneResult, RedundancyReport } from './types';
+import type { Evidence, GraphState, MandatoryQueryResult, OrderQueryResult, OrderWitness, PruneResult, RedundancyReport } from './types';
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
@@ -251,6 +251,26 @@ app.get('/api/order-query', (req, res) => {
     };
   }
   const result: OrderQueryResult = { aId: a, bId: b, relation: outcome.relation, path: outcome.path, witnesses };
+  res.json(result);
+});
+
+/* ---------- 必经证据分析 ---------- */
+
+app.get('/api/mandatory', (req, res) => {
+  const { a, b } = req.query;
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) {
+    return res.status(400).json({ message: 'a 与 b 两个证据 id 均为必填' });
+  }
+  if (a === b) {
+    return res.status(400).json({ message: '请选择两张不同的证据卡片' });
+  }
+  const ids = new Set(getEvidence().map((e) => e.id));
+  if (!ids.has(a) || !ids.has(b)) {
+    return res.status(404).json({ message: '证据卡片不存在，请刷新后重试' });
+  }
+  // a !== b 时 analyzeMandatory 不会返回 null；分析只读，不写数据库
+  const analysis = analyzeMandatory(getEdges(), a, b)!;
+  const result: MandatoryQueryResult = { aId: a, bId: b, ...analysis };
   res.json(result);
 });
 

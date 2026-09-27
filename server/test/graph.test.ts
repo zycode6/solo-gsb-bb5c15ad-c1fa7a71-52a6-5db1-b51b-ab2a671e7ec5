@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  analyzeMandatory,
   cycleAfterAdding,
   findCycle,
   findPath,
@@ -278,6 +279,94 @@ test('queryOrder：顺序未被约束时给出双向见证拓扑序', () => {
 
 test('queryOrder：同一卡片返回 null', () => {
   assert.equal(queryOrder(nodesOf(['a']), [], 'a', 'a'), null);
+});
+
+/* ---------- 必经证据分析 ---------- */
+
+test('analyzeMandatory：链式结构中所有中间卡片均为必经，按约束先后排列', () => {
+  const edges = [
+    { fromId: 'a', toId: 'm1' },
+    { fromId: 'm1', toId: 'm2' },
+    { fromId: 'm2', toId: 'b' },
+  ];
+  const r = analyzeMandatory(edges, 'a', 'b')!;
+  assert.equal(r.reachable, true);
+  assert.deepEqual(r.mandatory, ['m1', 'm2']);
+  assert.deepEqual(r.optional, []);
+});
+
+test('analyzeMandatory：菱形结构没有必经中间卡片，可选卡片各附绕开路径', () => {
+  const edges = [
+    { fromId: 'a', toId: 'x' },
+    { fromId: 'x', toId: 'b' },
+    { fromId: 'a', toId: 'y' },
+    { fromId: 'y', toId: 'b' },
+  ];
+  const r = analyzeMandatory(edges, 'a', 'b')!;
+  assert.equal(r.reachable, true);
+  assert.deepEqual(r.mandatory, []);
+  assert.deepEqual(
+    r.optional.map((o) => o.id).sort(),
+    ['x', 'y'],
+  );
+  const ox = r.optional.find((o) => o.id === 'x')!;
+  assert.deepEqual(ox.bypass, ['a', 'y', 'b']);
+  const oy = r.optional.find((o) => o.id === 'y')!;
+  assert.deepEqual(oy.bypass, ['a', 'x', 'b']);
+});
+
+test('analyzeMandatory：部分必经——共同经过的卡片为必经，分支卡片可绕开', () => {
+  // 路径 a→x→m→b 与 a→m→b：m 必经，x 可绕开
+  const edges = [
+    { fromId: 'a', toId: 'x' },
+    { fromId: 'x', toId: 'm' },
+    { fromId: 'm', toId: 'b' },
+    { fromId: 'a', toId: 'm' },
+  ];
+  const r = analyzeMandatory(edges, 'a', 'b')!;
+  assert.equal(r.reachable, true);
+  assert.deepEqual(r.mandatory, ['m']);
+  assert.deepEqual(r.optional, [{ id: 'x', bypass: ['a', 'm', 'b'] }]);
+});
+
+test('analyzeMandatory：存在直接连线时必经中间卡片为空', () => {
+  const edges = [
+    { fromId: 'a', toId: 'b' },
+    { fromId: 'a', toId: 'm' },
+    { fromId: 'm', toId: 'b' },
+  ];
+  const r = analyzeMandatory(edges, 'a', 'b')!;
+  assert.equal(r.reachable, true);
+  assert.deepEqual(r.mandatory, []);
+  // m 位于间接路径上但可绕开（直达边即绕开路径）
+  assert.deepEqual(r.optional, [{ id: 'm', bypass: ['a', 'b'] }]);
+});
+
+test('analyzeMandatory：不可达时明确标记 reachable=false', () => {
+  const edges = [
+    { fromId: 'a', toId: 'x' },
+    { fromId: 'b', toId: 'y' },
+  ];
+  const r = analyzeMandatory(edges, 'a', 'b')!;
+  assert.equal(r.reachable, false);
+  assert.deepEqual(r.mandatory, []);
+  assert.deepEqual(r.optional, []);
+});
+
+test('analyzeMandatory：与路径无关的节点不出现在结果中', () => {
+  const edges = [
+    { fromId: 'a', toId: 'm' },
+    { fromId: 'm', toId: 'b' },
+    { fromId: 'u', toId: 'v' }, // 与 A→B 完全无关的分支
+    { fromId: 'a', toId: 'w' }, // 从 A 出发但到不了 B
+  ];
+  const r = analyzeMandatory(edges, 'a', 'b')!;
+  assert.deepEqual(r.mandatory, ['m']);
+  assert.deepEqual(r.optional, []);
+});
+
+test('analyzeMandatory：同一卡片返回 null', () => {
+  assert.equal(analyzeMandatory([], 'a', 'a'), null);
 });
 
 /* ---------- 重复证据合并 ---------- */

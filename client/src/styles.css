@@ -509,6 +509,39 @@ body {
   box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.16);
 }
 
+/* 必经证据分析高亮：起点/终点（实心粉）与必经中间卡片（粉色） */
+.card.mandatory-endpoint {
+  border-color: #f472b6;
+  box-shadow: 0 0 0 3px rgba(244, 114, 182, 0.3);
+}
+
+.card.mandatory-node {
+  border-color: rgba(244, 114, 182, 0.85);
+  box-shadow: 0 0 0 3px rgba(244, 114, 182, 0.18);
+}
+
+/* 必经证据分析：绕开路径上的连线与卡片（粉色），被绕开的卡片（粉色虚线） */
+.edge.bypass-path .edge-line {
+  stroke: #f472b6;
+  stroke-width: 3;
+  opacity: 1;
+}
+
+.card.bypass-node {
+  border-color: rgba(244, 114, 182, 0.75);
+  box-shadow: 0 0 0 3px rgba(244, 114, 182, 0.16);
+}
+
+.card.bypass-skip {
+  border-style: dashed;
+  border-color: #f472b6;
+  opacity: 0.8;
+}
+
+.target-hint.mandatory-hint-inline {
+  color: #f472b6;
+}
+
 @keyframes card-shake-glow {
   0%, 100% { box-shadow: 0 0 0 0 rgba(255, 92, 108, 0.45); }
   50% { box-shadow: 0 0 18px 3px rgba(255, 92, 108, 0.35); }
@@ -800,6 +833,139 @@ body {
 
 .preview-banner b {
   color: #22d3ee;
+}
+
+/* ---------- 必经证据分析面板 ---------- */
+
+.mandatory-panel {
+  background: var(--bg-soft);
+  border: 1px solid rgba(244, 114, 182, 0.4);
+  border-radius: var(--radius);
+  padding: 14px 18px;
+  margin-bottom: 14px;
+}
+
+.mandatory-head h2 {
+  margin: 0 0 4px;
+  font-size: 15.5px;
+  color: #f472b6;
+}
+
+.mandatory-head p {
+  margin: 0 0 10px;
+  max-width: 900px;
+  line-height: 1.6;
+}
+
+.mandatory-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mandatory-controls select {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13.5px;
+  font-family: inherit;
+  max-width: 280px;
+}
+
+.mandatory-controls select:focus {
+  outline: none;
+  border-color: #f472b6;
+}
+
+.mandatory-error {
+  margin-top: 10px;
+  font-size: 13.5px;
+  color: var(--danger);
+}
+
+.mandatory-result {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mandatory-verdict {
+  font-size: 14.5px;
+}
+
+.mandatory-verdict b {
+  color: #f472b6;
+}
+
+.mandatory-list {
+  margin: 0;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13.5px;
+}
+
+.mandatory-list li::marker {
+  color: #f472b6;
+  font-weight: 700;
+}
+
+.mandatory-optional {
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.optional-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.optional-item {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.optional-item.active {
+  border-color: #f472b6;
+  box-shadow: 0 0 0 2px rgba(244, 114, 182, 0.2);
+}
+
+.optional-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.optional-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.optional-bypass {
+  font-size: 12.5px;
+  color: #f472b6;
+  line-height: 1.7;
 }
 
 /* ---------- 弹窗 ---------- */

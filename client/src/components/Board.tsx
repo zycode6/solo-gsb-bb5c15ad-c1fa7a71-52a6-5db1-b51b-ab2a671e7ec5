@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import type { Conflict } from '../App';
+import type { Conflict, MandatoryHighlight } from '../App';
 import type { Evidence, GraphState, OrderWitness, RedundantEdge } from '../types';
 
 interface Rect {
@@ -21,6 +21,8 @@ interface BoardProps {
   orderPath: string[] | null;
   /** 顺序查询：按见证拓扑临时预览画布布局（不写数据库） */
   preview: OrderWitness | null;
+  /** 必经证据分析：高亮必经卡片（含起终点）或绕开某可选卡片的真实路径 */
+  mandatory: MandatoryHighlight | null;
   onStartLink: (id: string) => void;
   onCancelLink: () => void;
   onConnect: (fromId: string, toId: string) => void;
@@ -136,6 +138,26 @@ export default function Board(props: BoardProps) {
   }, [props.orderPath]);
   const orderPathNodes = useMemo(() => new Set(props.orderPath ?? []), [props.orderPath]);
 
+  /* 必经证据分析高亮（粉色）：必经卡片与起终点；或绕开路径经过的边与节点、被绕开的卡片 */
+  const mandatoryHL = props.mandatory;
+  const mandatoryNodes = useMemo(
+    () => new Set(mandatoryHL?.kind === 'mandatory' ? mandatoryHL.nodes : []),
+    [mandatoryHL],
+  );
+  const mandatoryEndpoints = useMemo(
+    () => new Set(mandatoryHL?.kind === 'mandatory' ? [mandatoryHL.aId, mandatoryHL.bId] : []),
+    [mandatoryHL],
+  );
+  const bypassEdgeKeys = useMemo(() => {
+    const s = new Set<string>();
+    if (mandatoryHL?.kind === 'bypass') {
+      for (let i = 0; i < mandatoryHL.path.length - 1; i++) s.add(`${mandatoryHL.path[i]}->${mandatoryHL.path[i + 1]}`);
+    }
+    return s;
+  }, [mandatoryHL]);
+  const bypassNodes = useMemo(() => new Set(mandatoryHL?.kind === 'bypass' ? mandatoryHL.path : []), [mandatoryHL]);
+  const bypassSkip = mandatoryHL?.kind === 'bypass' ? mandatoryHL.skip : null;
+
   /* 测量卡片位置，用于绘制 SVG 连线 */
   useLayoutEffect(() => {
     const board = boardRef.current;
@@ -242,6 +264,9 @@ export default function Board(props: BoardProps) {
           <marker id="arrow-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M 0 1 L 9 5 L 0 9 z" fill="#22d3ee" />
           </marker>
+          <marker id="arrow-pink" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 1 L 9 5 L 0 9 z" fill="#f472b6" />
+          </marker>
         </defs>
 
         {state.edges.map((e) => {
@@ -253,12 +278,14 @@ export default function Board(props: BoardProps) {
           const isPruneTarget = key === pruneTargetKey;
           const isPruneAlt = pruneAltEdgeKeys.has(key);
           const isOrderPath = orderPathEdgeKeys.has(key);
+          const isBypass = bypassEdgeKeys.has(key);
           const cls = [
             'edge',
             isConflict ? 'conflict' : '',
             isPruneTarget ? 'prune-target' : '',
             isPruneAlt ? 'prune-alt' : '',
             isOrderPath ? 'order-path' : '',
+            isBypass ? 'bypass-path' : '',
           ]
             .filter(Boolean)
             .join(' ');
@@ -270,7 +297,9 @@ export default function Board(props: BoardProps) {
                 ? 'arrow-green'
                 : isOrderPath
                   ? 'arrow-cyan'
-                  : 'arrow';
+                  : isBypass
+                    ? 'arrow-pink'
+                    : 'arrow';
           const d = curve(s, t);
           return (
             <g key={e.id} className={cls} onClick={() => props.onDeleteEdge(e.id)}>
@@ -325,6 +354,10 @@ export default function Board(props: BoardProps) {
                 props.pruneFocus !== null && (props.pruneFocus.fromId === ev.id || props.pruneFocus.toId === ev.id);
               const isPrunePath = !isPruneEndpoint && prunePathNodes.has(ev.id);
               const isOrderPath = orderPathNodes.has(ev.id);
+              const isMandatoryEndpoint = mandatoryEndpoints.has(ev.id);
+              const isMandatoryNode = !isMandatoryEndpoint && mandatoryNodes.has(ev.id);
+              const isBypassNode = bypassNodes.has(ev.id);
+              const isBypassSkip = bypassSkip === ev.id;
               return (
                 <article
                   key={ev.id}
@@ -339,6 +372,10 @@ export default function Board(props: BoardProps) {
                     isPruneEndpoint ? 'prune-endpoint' : '',
                     isPrunePath ? 'prune-path' : '',
                     isOrderPath ? 'order-path' : '',
+                    isMandatoryEndpoint ? 'mandatory-endpoint' : '',
+                    isMandatoryNode ? 'mandatory-node' : '',
+                    isBypassNode ? 'bypass-node' : '',
+                    isBypassSkip ? 'bypass-skip' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
@@ -383,6 +420,7 @@ export default function Board(props: BoardProps) {
                   {isMergePick && props.mergeMode !== true && (
                     <div className="target-hint merge-hint-inline">点击：保留本卡，把「{byId.get(props.mergeMode as string)?.title}」合并进来</div>
                   )}
+                  {isBypassSkip && <div className="target-hint mandatory-hint-inline">非必经：粉色绕开路径不经过本卡</div>}
                 </article>
               );
             })}

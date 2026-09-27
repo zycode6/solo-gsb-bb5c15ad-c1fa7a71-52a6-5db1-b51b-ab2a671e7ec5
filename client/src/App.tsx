@@ -3,6 +3,7 @@ import { api, ApiError } from './api';
 import Board from './components/Board';
 import CardForm from './components/CardForm';
 import ConflictBanner from './components/ConflictBanner';
+import MandatoryPanel from './components/MandatoryPanel';
 import OrderQueryPanel from './components/OrderQueryPanel';
 import PrunePanel from './components/PrunePanel';
 import TimelinePanel from './components/TimelinePanel';
@@ -14,6 +15,11 @@ export interface Conflict {
   /** 由「合并重复证据」触发时附带的冲突详情（自环 / 有向环） */
   merge?: MergeConflict;
 }
+
+/** 必经证据分析的画布高亮：必经卡片集合（含起终点），或绕开某可选卡片的一条真实路径 */
+export type MandatoryHighlight =
+  | { kind: 'mandatory'; aId: string; bId: string; nodes: string[] }
+  | { kind: 'bypass'; path: string[]; skip: string };
 
 export default function App() {
   const [state, setState] = useState<GraphState | null>(null);
@@ -29,6 +35,8 @@ export default function App() {
   /** 顺序查询：画布上高亮的依据路径 / 正在预览的见证布局 */
   const [orderPath, setOrderPath] = useState<string[] | null>(null);
   const [orderPreview, setOrderPreview] = useState<OrderWitness | null>(null);
+  /** 必经证据分析：画布上高亮的必经卡片 / 绕开路径 */
+  const [mandatoryHL, setMandatoryHL] = useState<MandatoryHighlight | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -38,12 +46,13 @@ export default function App() {
       .catch(() => setError('无法连接服务器，请确认后端已启动'));
   }, []);
 
-  /* 图状态每次变化后重新做传递约简分析，并取消可能已失效的瘦身高亮与顺序查询高亮/预览 */
+  /* 图状态每次变化后重新做传递约简分析，并取消可能已失效的瘦身高亮与顺序查询/必经分析高亮、预览 */
   useEffect(() => {
     if (!state) return;
     setPruneFocus(null);
     setOrderPath(null);
     setOrderPreview(null);
+    setMandatoryHL(null);
     let alive = true;
     api
       .redundancy()
@@ -64,6 +73,7 @@ export default function App() {
         setEditing(null);
         setOrderPath(null);
         setOrderPreview(null);
+        setMandatoryHL(null);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -311,6 +321,15 @@ export default function App() {
         />
       )}
 
+      {state && (
+        <MandatoryPanel
+          state={state}
+          highlight={mandatoryHL}
+          titleOf={titleOf}
+          onHighlight={setMandatoryHL}
+        />
+      )}
+
       {orderPreview && (
         <div className="preview-banner">
           <span>
@@ -352,6 +371,7 @@ export default function App() {
               pruneFocus={pruneFocus}
               orderPath={orderPath}
               preview={orderPreview}
+              mandatory={mandatoryHL}
               onStartLink={setLinkFrom}
               onCancelLink={() => setLinkFrom(null)}
               onConnect={connect}

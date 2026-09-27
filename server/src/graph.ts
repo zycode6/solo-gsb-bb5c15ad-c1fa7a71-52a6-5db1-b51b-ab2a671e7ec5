@@ -292,6 +292,74 @@ export function queryOrder(nodes: OrderableNode[], edges: EdgeLike[], aId: strin
   return { relation: 'unconstrained', path: null, witnesses: { aFirst, bFirst } };
 }
 
+/* ---------- 必经证据分析 ---------- */
+
+/** 从 start 出发沿有向边可达的全部节点（含 start 自身） */
+function reachableFrom(edges: EdgeLike[], start: string): Set<string> {
+  const adj = new Map<string, string[]>();
+  for (const e of edges) {
+    const list = adj.get(e.fromId);
+    if (list) list.push(e.toId);
+    else adj.set(e.fromId, [e.toId]);
+  }
+  const seen = new Set<string>([start]);
+  const queue: string[] = [start];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    for (const nxt of adj.get(cur) ?? []) {
+      if (seen.has(nxt)) continue;
+      seen.add(nxt);
+      queue.push(nxt);
+    }
+  }
+  return seen;
+}
+
+/**
+ * 必经证据分析：仅当 A 能沿现有「必须早于」连线到达 B 时，
+ * 找出所有 A→B 路径共同经过的中间卡片（必经证据）。
+ *
+ * - 位于某条 A→B 路径上的节点 = 从 A 可达、且能到达 B 的节点（正、反两次 BFS 的交集）；
+ * - 候选中间卡片 v 是必经的 ⇔ 删去 v 的全部关联边后 A 不再能到达 B；
+ *   若仍可达，找到的那条路径即一条「绕开 v」的真实路径，附在结果中供前端核对；
+ * - 必经卡片出现在每条 A→B 路径上（否则删去它直达路径仍在），
+ *   因此按任一真实路径（此处取 BFS 最短路径）中的先后排列，即约束先后顺序；
+ * - 存在 A→B 直接连线时，直达路径不经过任何中间卡片，必经集合自然为空；
+ * - A 不可达 B 时 reachable 为 false，其余字段为空。
+ * aId === bId 时返回 null。
+ */
+export interface MandatoryAnalysis {
+  reachable: boolean;
+  /** 所有 A→B 路径共同经过的中间卡片，按约束先后排列 */
+  mandatory: string[];
+  /** 位于某条 A→B 路径但非必经的中间卡片，各附一条绕开它的真实路径（含起终点） */
+  optional: Array<{ id: string; bypass: string[] }>;
+}
+
+export function analyzeMandatory(edges: EdgeLike[], aId: string, bId: string): MandatoryAnalysis | null {
+  if (aId === bId) return null;
+  const anyPath = findPath(edges, aId, bId);
+  if (!anyPath) return { reachable: false, mandatory: [], optional: [] };
+  const forward = reachableFrom(edges, aId);
+  const backward = reachableFrom(
+    edges.map((e) => ({ fromId: e.toId, toId: e.fromId })),
+    bId,
+  );
+  const mandatory: string[] = [];
+  const optional: Array<{ id: string; bypass: string[] }> = [];
+  for (const v of forward) {
+    if (v === aId || v === bId || !backward.has(v)) continue;
+    const rest = edges.filter((e) => e.fromId !== v && e.toId !== v);
+    const bypass = findPath(rest, aId, bId);
+    if (bypass) optional.push({ id: v, bypass });
+    else mandatory.push(v);
+  }
+  // 必经卡片必在 anyPath 上，按其在最短路径中的先后即约束先后
+  const pos = new Map(anyPath.map((id, i) => [id, i]));
+  mandatory.sort((x, y) => pos.get(x)! - pos.get(y)!);
+  return { reachable: true, mandatory, optional };
+}
+
 /**
  * 在已有图中寻找一个环（用于导入快照校验）。
  * 返回闭环节点序列 [n, …, n]；无环返回 null。

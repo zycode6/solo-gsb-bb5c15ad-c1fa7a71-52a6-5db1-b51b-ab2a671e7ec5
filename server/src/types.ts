@@ -77,3 +77,15 @@ export interface OrderQueryResult {
   /** relation 为 unconstrained 时：双向见证 */
   witnesses: { aFirst: OrderWitness; bFirst: OrderWitness } | null;
 }
+
+/** 必经证据分析结果（只读，不写数据库） */
+export interface MandatoryQueryResult {
+  aId: string;
+  bId: string;
+  /** A 能否沿现有「必须早于」连线到达 B；不可达时必无必经证据 */
+  reachable: boolean;
+  /** 所有 A→B 路径共同经过的中间卡片，按约束先后排列（有直接连线时为空） */
+  mandatory: string[];
+  /** 位于某条 A→B 路径但非必经的中间卡片，各附一条绕开它的真实路径（含起终点） */
+  optional: Array<{ id: string; bypass: string[] }>;
+}
