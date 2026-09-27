@@ -3,10 +3,11 @@ import { api, ApiError } from './api';
 import Board from './components/Board';
 import CardForm from './components/CardForm';
 import ConflictBanner from './components/ConflictBanner';
+import MustPassPanel from './components/MustPassPanel';
 import OrderQueryPanel from './components/OrderQueryPanel';
 import PrunePanel from './components/PrunePanel';
 import TimelinePanel from './components/TimelinePanel';
-import type { Evidence, EvidenceFormValues, GraphState, MergeConflict, OrderWitness, RedundantEdge } from './types';
+import type { Evidence, EvidenceFormValues, GraphState, MergeConflict, MustPassHighlight, OrderWitness, RedundantEdge } from './types';
 
 export interface Conflict {
   cycle: string[];
@@ -29,6 +30,8 @@ export default function App() {
   /** 顺序查询：画布上高亮的依据路径 / 正在预览的见证布局 */
   const [orderPath, setOrderPath] = useState<string[] | null>(null);
   const [orderPreview, setOrderPreview] = useState<OrderWitness | null>(null);
+  /** 必经证据分析：画布上的高亮视图（由 MustPassPanel 全权维护） */
+  const [mustPassHL, setMustPassHL] = useState<MustPassHighlight | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -311,6 +314,8 @@ export default function App() {
         />
       )}
 
+      {state && <MustPassPanel state={state} titleOf={titleOf} onHighlight={setMustPassHL} />}
+
       {orderPreview && (
         <div className="preview-banner">
           <span>
@@ -352,6 +357,7 @@ export default function App() {
               pruneFocus={pruneFocus}
               orderPath={orderPath}
               preview={orderPreview}
+              mustPass={mustPassHL}
               onStartLink={setLinkFrom}
               onCancelLink={() => setLinkFrom(null)}
               onConnect={connect}

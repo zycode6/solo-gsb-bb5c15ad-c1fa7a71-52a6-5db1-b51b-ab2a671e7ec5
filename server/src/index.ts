@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { db, getEdges, getEvidence } from './db';
-import { cycleAfterAdding, findCycle, findRedundantEdges, mergeConflict, planMergeEdges, planPrune, queryOrder, topoLevels } from './graph';
+import { analyzeMustPass, cycleAfterAdding, findBypassPath, findCycle, findRedundantEdges, mergeConflict, planMergeEdges, planPrune, queryOrder, topoLevels } from './graph';
 import { resetWithSample, seedIfEmpty } from './seed';
-import type { Evidence, GraphState, OrderQueryResult, OrderWitness, PruneResult, RedundancyReport } from './types';
+import type { BypassPathResult, Evidence, GraphState, MustPassResult, OrderQueryResult, OrderWitness, PruneResult, RedundancyReport } from './types';
 
 const app = express();
 app.use(express.json({ limit: '5mb' }));
@@ -251,6 +251,53 @@ app.get('/api/order-query', (req, res) => {
     };
   }
   const result: OrderQueryResult = { aId: a, bId: b, relation: outcome.relation, path: outcome.path, witnesses };
+  res.json(result);
+});
+
+/* ---------- 必经证据分析（只读） ---------- */
+
+app.get('/api/must-pass', (req, res) => {
+  const { a, b } = req.query;
+  if (typeof a !== 'string' || typeof b !== 'string' || !a || !b) {
+    return res.status(400).json({ message: 'a 与 b 两个证据 id 均为必填' });
+  }
+  if (a === b) {
+    return res.status(400).json({ message: '起点与终点不能是同一张卡片' });
+  }
+  const evidence = getEvidence();
+  const ids = new Set(evidence.map((e) => e.id));
+  if (!ids.has(a) || !ids.has(b)) {
+    return res.status(404).json({ message: '证据卡片不存在，请刷新后重试' });
+  }
+  const analysis = analyzeMustPass(
+    evidence.map((e) => ({ id: e.id, createdAt: e.createdAt })),
+    getEdges(),
+    a,
+    b,
+  );
+  if (!analysis) {
+    return res.status(409).json({ message: '当前约束图存在环，无法分析必经证据' });
+  }
+  const result: MustPassResult = { aId: a, bId: b, ...analysis };
+  res.json(result);
+});
+
+app.get('/api/must-pass/bypass', (req, res) => {
+  const { a, b, skip } = req.query;
+  if (typeof a !== 'string' || typeof b !== 'string' || typeof skip !== 'string' || !a || !b || !skip) {
+    return res.status(400).json({ message: 'a、b 与 skip 三个证据 id 均为必填' });
+  }
+  if (a === b) {
+    return res.status(400).json({ message: '起点与终点不能是同一张卡片' });
+  }
+  if (skip === a || skip === b) {
+    return res.status(400).json({ message: '只能绕开中间卡片，不能绕开起点或终点' });
+  }
+  const ids = new Set(getEvidence().map((e) => e.id));
+  if (!ids.has(a) || !ids.has(b) || !ids.has(skip)) {
+    return res.status(404).json({ message: '证据卡片不存在，请刷新后重试' });
+  }
+  const result: BypassPathResult = { aId: a, bId: b, skipId: skip, path: findBypassPath(getEdges(), a, b, skip) };
   res.json(result);
 });
 

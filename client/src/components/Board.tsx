@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import type { Conflict } from '../App';
-import type { Evidence, GraphState, OrderWitness, RedundantEdge } from '../types';
+import type { Evidence, GraphState, MustPassHighlight, OrderWitness, RedundantEdge } from '../types';
 
 interface Rect {
   x: number;
@@ -21,6 +21,8 @@ interface BoardProps {
   orderPath: string[] | null;
   /** 顺序查询：按见证拓扑临时预览画布布局（不写数据库） */
   preview: OrderWitness | null;
+  /** 必经证据分析：高亮起终点与必经中间卡片，以及绕开核对路径 */
+  mustPass: MustPassHighlight | null;
   onStartLink: (id: string) => void;
   onCancelLink: () => void;
   onConnect: (fromId: string, toId: string) => void;
@@ -136,6 +138,23 @@ export default function Board(props: BoardProps) {
   }, [props.orderPath]);
   const orderPathNodes = useMemo(() => new Set(props.orderPath ?? []), [props.orderPath]);
 
+  /* 必经证据高亮：起终点与必经中间卡片（粉色）；绕开核对路径（橙色）与被绕开卡片 */
+  const mustEndpoints = useMemo(
+    () => (props.mustPass ? new Set([props.mustPass.aId, props.mustPass.bId]) : new Set<string>()),
+    [props.mustPass],
+  );
+  const mustPassNodes = useMemo(() => new Set(props.mustPass?.mustPass ?? []), [props.mustPass]);
+  const bypassPath = props.mustPass?.bypass?.path ?? null;
+  const bypassNodes = useMemo(() => new Set(bypassPath ?? []), [bypassPath]);
+  const bypassEdgeKeys = useMemo(() => {
+    const s = new Set<string>();
+    if (bypassPath) {
+      for (let i = 0; i < bypassPath.length - 1; i++) s.add(`${bypassPath[i]}->${bypassPath[i + 1]}`);
+    }
+    return s;
+  }, [bypassPath]);
+  const mustSkipId = props.mustPass?.bypass?.skipId ?? null;
+
   /* 测量卡片位置，用于绘制 SVG 连线 */
   useLayoutEffect(() => {
     const board = boardRef.current;
@@ -242,6 +261,9 @@ export default function Board(props: BoardProps) {
           <marker id="arrow-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
             <path d="M 0 1 L 9 5 L 0 9 z" fill="#22d3ee" />
           </marker>
+          <marker id="arrow-orange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 1 L 9 5 L 0 9 z" fill="#fb923c" />
+          </marker>
         </defs>
 
         {state.edges.map((e) => {
@@ -253,12 +275,14 @@ export default function Board(props: BoardProps) {
           const isPruneTarget = key === pruneTargetKey;
           const isPruneAlt = pruneAltEdgeKeys.has(key);
           const isOrderPath = orderPathEdgeKeys.has(key);
+          const isBypass = bypassEdgeKeys.has(key);
           const cls = [
             'edge',
             isConflict ? 'conflict' : '',
             isPruneTarget ? 'prune-target' : '',
             isPruneAlt ? 'prune-alt' : '',
             isOrderPath ? 'order-path' : '',
+            isBypass ? 'bypass' : '',
           ]
             .filter(Boolean)
             .join(' ');
@@ -270,7 +294,9 @@ export default function Board(props: BoardProps) {
                 ? 'arrow-green'
                 : isOrderPath
                   ? 'arrow-cyan'
-                  : 'arrow';
+                  : isBypass
+                    ? 'arrow-orange'
+                    : 'arrow';
           const d = curve(s, t);
           return (
             <g key={e.id} className={cls} onClick={() => props.onDeleteEdge(e.id)}>
@@ -325,6 +351,10 @@ export default function Board(props: BoardProps) {
                 props.pruneFocus !== null && (props.pruneFocus.fromId === ev.id || props.pruneFocus.toId === ev.id);
               const isPrunePath = !isPruneEndpoint && prunePathNodes.has(ev.id);
               const isOrderPath = orderPathNodes.has(ev.id);
+              const isMustEndpoint = mustEndpoints.has(ev.id);
+              const isMustPass = mustPassNodes.has(ev.id);
+              const isBypassNode = bypassNodes.has(ev.id);
+              const isMustSkip = mustSkipId === ev.id;
               return (
                 <article
                   key={ev.id}
@@ -339,6 +369,10 @@ export default function Board(props: BoardProps) {
                     isPruneEndpoint ? 'prune-endpoint' : '',
                     isPrunePath ? 'prune-path' : '',
                     isOrderPath ? 'order-path' : '',
+                    isMustEndpoint ? 'must-endpoint' : '',
+                    isMustPass ? 'must-pass' : '',
+                    isBypassNode ? 'bypass-node' : '',
+                    isMustSkip ? 'must-skip' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
+  analyzeMustPass,
   cycleAfterAdding,
+  findBypassPath,
   findCycle,
   findPath,
   findRedundantEdges,
@@ -278,6 +280,139 @@ test('queryOrder：顺序未被约束时给出双向见证拓扑序', () => {
 
 test('queryOrder：同一卡片返回 null', () => {
   assert.equal(queryOrder(nodesOf(['a']), [], 'a', 'a'), null);
+});
+
+/* ---------- 必经证据分析 ---------- */
+
+test('analyzeMustPass：链式结构中所有中间卡片均为必经，按约束先后排序', () => {
+  const nodes = nodesOf(['a', 'b', 'c', 'd']);
+  const edges = [
+    { fromId: 'a', toId: 'b' },
+    { fromId: 'b', toId: 'c' },
+    { fromId: 'c', toId: 'd' },
+  ];
+  const r = analyzeMustPass(nodes, edges, 'a', 'd')!;
+  assert.equal(r.reachable, true);
+  assert.equal(r.direct, false);
+  assert.deepEqual(r.mustPass, ['b', 'c']);
+  assert.deepEqual(r.optional, []);
+});
+
+test('analyzeMustPass：菱形结构没有必经中间卡片，中间卡片均可绕开', () => {
+  const nodes = nodesOf(['a', 'b', 'c', 'd']);
+  const edges = [
+    { fromId: 'a', toId: 'b' },
+    { fromId: 'a', toId: 'c' },
+    { fromId: 'b', toId: 'd' },
+    { fromId: 'c', toId: 'd' },
+  ];
+  const r = analyzeMustPass(nodes, edges, 'a', 'd')!;
+  assert.equal(r.reachable, true);
+  assert.equal(r.direct, false);
+  assert.deepEqual(r.mustPass, []);
+  assert.deepEqual(r.optional.sort(), ['b', 'c']);
+});
+
+test('analyzeMustPass：有直接连线时必经中间卡片为空，其余中间卡片可绕开', () => {
+  const nodes = nodesOf(['a', 'b', 'c']);
+  const edges = [
+    { fromId: 'a', toId: 'b' },
+    { fromId: 'b', toId: 'c' },
+    { fromId: 'a', toId: 'c' },
+  ];
+  const r = analyzeMustPass(nodes, edges, 'a', 'c')!;
+  assert.equal(r.reachable, true);
+  assert.equal(r.direct, true);
+  assert.deepEqual(r.mustPass, []);
+  assert.deepEqual(r.optional, ['b']);
+});
+
+test('analyzeMustPass：分叉前的共同路段必经，分支上的卡片可互相绕开', () => {
+  // a→b→{c,d}→e：b 是所有 a→e 路径的共同中间卡片；c 与 d 互为可绕开支路
+  const nodes = nodesOf(['a', 'b', 'c', 'd', 'e']);
+  const edges = [
+    { fromId: 'a', toId: 'b' },
+    { fromId: 'b', toId: 'c' },
+    { fromId: 'b', toId: 'd' },
+    { fromId: 'c', toId: 'e' },
+    { fromId: 'd', toId: 'e' },
+  ];
+  const r = analyzeMustPass(nodes, edges, 'a', 'e')!;
+  assert.equal(r.reachable, true);
+  assert.deepEqual(r.mustPass, ['b']);
+  assert.deepEqual(r.optional.sort(), ['c', 'd']);
+});
+
+test('analyzeMustPass：必经卡片按约束先后（拓扑）而非创建时间排序', () => {
+  // 创建时间 c 早于 d，但约束链为 a→d→c→b
+  const nodes = [
+    { id: 'a', createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'b', createdAt: '2026-01-02T00:00:00.000Z' },
+    { id: 'c', createdAt: '2026-01-03T00:00:00.000Z' },
+    { id: 'd', createdAt: '2026-01-04T00:00:00.000Z' },
+  ];
+  const edges = [
+    { fromId: 'a', toId: 'd' },
+    { fromId: 'd', toId: 'c' },
+    { fromId: 'c', toId: 'b' },
+  ];
+  const r = analyzeMustPass(nodes, edges, 'a', 'b')!;
+  assert.deepEqual(r.mustPass, ['d', 'c']);
+});
+
+test('analyzeMustPass：不可达时 reachable=false 且结果为空', () => {
+  const nodes = nodesOf(['a', 'b']);
+  const edges = [{ fromId: 'b', toId: 'a' }];
+  const r = analyzeMustPass(nodes, edges, 'a', 'b')!;
+  assert.equal(r.reachable, false);
+  assert.equal(r.direct, false);
+  assert.deepEqual(r.mustPass, []);
+  assert.deepEqual(r.optional, []);
+});
+
+test('analyzeMustPass：不在任何 A→B 路径上的卡片不参与结果', () => {
+  const nodes = nodesOf(['a', 'b', 'x']);
+  const edges = [
+    { fromId: 'a', toId: 'b' },
+    { fromId: 'x', toId: 'b' },
+  ];
+  const r = analyzeMustPass(nodes, edges, 'a', 'b')!;
+  assert.deepEqual(r.mustPass, []);
+  assert.deepEqual(r.optional, []);
+});
+
+test('analyzeMustPass：同一卡片返回 null；有环图返回 null', () => {
+  const nodes = nodesOf(['a', 'b']);
+  assert.equal(analyzeMustPass(nodes, [], 'a', 'a'), null);
+  const cyclic = [
+    { fromId: 'a', toId: 'b' },
+    { fromId: 'b', toId: 'a' },
+  ];
+  assert.equal(analyzeMustPass(nodes, cyclic, 'a', 'b'), null);
+});
+
+test('findBypassPath：绕开非必经卡片给出真实最短路径', () => {
+  const edges = [
+    { fromId: 'a', toId: 'b' },
+    { fromId: 'a', toId: 'c' },
+    { fromId: 'b', toId: 'd' },
+    { fromId: 'c', toId: 'd' },
+  ];
+  assert.deepEqual(findBypassPath(edges, 'a', 'd', 'b'), ['a', 'c', 'd']);
+  assert.deepEqual(findBypassPath(edges, 'a', 'd', 'c'), ['a', 'b', 'd']);
+});
+
+test('findBypassPath：必经卡片无法绕开；不能绕开起点或终点', () => {
+  const chain = [
+    { fromId: 'a', toId: 'b' },
+    { fromId: 'b', toId: 'd' },
+  ];
+  assert.equal(findBypassPath(chain, 'a', 'd', 'b'), null);
+  assert.equal(findBypassPath(chain, 'a', 'd', 'a'), null);
+  assert.equal(findBypassPath(chain, 'a', 'd', 'd'), null);
+  // A 根本不可达 B 时同样为 null
+
+  assert.equal(findBypassPath(chain, 'd', 'a', 'b'), null);
 });
 
 /* ---------- 重复证据合并 ---------- */

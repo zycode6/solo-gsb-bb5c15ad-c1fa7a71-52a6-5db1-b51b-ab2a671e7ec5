@@ -77,3 +77,26 @@ export interface OrderQueryResult {
   /** relation 为 unconstrained 时：双向见证 */
   witnesses: { aFirst: OrderWitness; bFirst: OrderWitness } | null;
 }
+
+/** 必经证据分析结果（只读） */
+export interface MustPassResult {
+  aId: string;
+  bId: string;
+  /** A 是否能沿现有「必须早于」连线到达 B */
+  reachable: boolean;
+  /** 是否存在 A → B 直接连线（有则必经中间卡片必为空） */
+  direct: boolean;
+  /** 所有 A→B 路径共同经过的中间卡片（必经证据），按约束先后排序 */
+  mustPass: string[];
+  /** 位于某条 A→B 路径但并非必经的中间卡片（存在绕开它的真实路径），按约束先后排序 */
+  optional: string[];
+}
+
+/** 绕开指定中间卡片的真实 A→B 路径核对结果 */
+export interface BypassPathResult {
+  aId: string;
+  bId: string;
+  skipId: string;
+  /** 绕开 skipId 的一条最短 A→B 真实路径（含两端点）；不存在（该卡片实为必经）时为 null */
+  path: string[] | null;
+}

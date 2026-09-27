@@ -1,4 +1,4 @@
-import type { EvidenceFormValues, GraphState, MergeConflictKind, OrderQueryResult, PruneResult, RedundantEdge } from './types';
+import type { BypassPathResult, EvidenceFormValues, GraphState, MergeConflictKind, MustPassResult, OrderQueryResult, PruneResult, RedundantEdge } from './types';
 
 export class ApiError extends Error {
   status: number;
@@ -38,6 +38,12 @@ export const api = {
   pruneEdges: (edgeIds: number[]) => request<PruneResult>('/api/edges/prune', json('POST', { edgeIds })),
   orderQuery: (a: string, b: string) =>
     request<OrderQueryResult>(`/api/order-query?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`),
+  mustPass: (a: string, b: string) =>
+    request<MustPassResult>(`/api/must-pass?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`),
+  mustPassBypass: (a: string, b: string, skip: string) =>
+    request<BypassPathResult>(
+      `/api/must-pass/bypass?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}&skip=${encodeURIComponent(skip)}`,
+    ),
   importSnapshot: (payload: unknown) => request<GraphState>('/api/import', json('POST', payload)),
   seed: () => request<GraphState>('/api/seed', { method: 'POST' }),
 };

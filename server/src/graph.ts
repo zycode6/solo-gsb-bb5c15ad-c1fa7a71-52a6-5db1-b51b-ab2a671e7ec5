@@ -292,6 +292,92 @@ export function queryOrder(nodes: OrderableNode[], edges: EdgeLike[], aId: strin
   return { relation: 'unconstrained', path: null, witnesses: { aFirst, bFirst } };
 }
 
+/* ---------- 必经证据分析 ---------- */
+
+/** 从 start 出发沿有向边可达的全部节点集合（含 start 自身） */
+function reachableSet(edges: EdgeLike[], start: string): Set<string> {
+  const adj = new Map<string, string[]>();
+  for (const e of edges) {
+    const list = adj.get(e.fromId);
+    if (list) list.push(e.toId);
+    else adj.set(e.fromId, [e.toId]);
+  }
+  const seen = new Set<string>([start]);
+  const queue: string[] = [start];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    for (const nxt of adj.get(cur) ?? []) {
+      if (seen.has(nxt)) continue;
+      seen.add(nxt);
+      queue.push(nxt);
+    }
+  }
+  return seen;
+}
+
+export interface MustPassAnalysis {
+  /** A 是否能沿现有「必须早于」连线到达 B */
+  reachable: boolean;
+  /** 是否存在 A → B 的直接连线（有则必经中间卡片必为空） */
+  direct: boolean;
+  /** 所有 A→B 路径共同经过的中间卡片（必经证据），按约束先后排序 */
+  mustPass: string[];
+  /** 位于某条 A→B 路径但并非必经的中间卡片（存在绕开它的真实路径），按约束先后排序 */
+  optional: string[];
+}
+
+/**
+ * 必经证据分析：在 A 可达 B 的前提下，找出所有 A→B 路径共同经过的中间卡片。
+ *
+ * 中间卡片 v 「必经」⇔ 在删除 v（及其相连连线）后的图中 A 不再可达 B；
+ * 否则 v 位于某条 A→B 路径上但可被绕开（optional）。
+ * 候选集 = 从 A 可达 且 能到达 B 的节点（即位于某条 A→B 路径上的节点），剔除 A、B 自身。
+ * 结果按确定性拓扑序（约束先后）排序；A 不可达 B 时 reachable=false；
+ * aId === bId 或图有环时返回 null。
+ */
+export function analyzeMustPass(
+  nodes: OrderableNode[],
+  edges: EdgeLike[],
+  aId: string,
+  bId: string,
+): MustPassAnalysis | null {
+  if (aId === bId) return null;
+  if (!findPath(edges, aId, bId)) {
+    return { reachable: false, direct: false, mustPass: [], optional: [] };
+  }
+  const order = stableTopoOrder(nodes, edges);
+  if (!order) return null;
+  // 正向：A 可达的节点；反向：能到达 B 的节点（在反向图上从 B 出发）
+  const forward = reachableSet(edges, aId);
+  const reversed = edges.map((e) => ({ fromId: e.toId, toId: e.fromId }));
+  const backward = reachableSet(reversed, bId);
+  const direct = edges.some((e) => e.fromId === aId && e.toId === bId);
+  const mustPass: string[] = [];
+  const optional: string[] = [];
+  for (const id of forward) {
+    if (id === aId || id === bId || !backward.has(id)) continue;
+    const rest = edges.filter((e) => e.fromId !== id && e.toId !== id);
+    if (findPath(rest, aId, bId)) optional.push(id);
+    else mustPass.push(id);
+  }
+  const pos = new Map(order.map((id, i) => [id, i]));
+  const byOrder = (x: string, y: string): number => (pos.get(x) ?? 0) - (pos.get(y) ?? 0);
+  mustPass.sort(byOrder);
+  optional.sort(byOrder);
+  return { reachable: true, direct, mustPass, optional };
+}
+
+/**
+ * 绕开指定中间卡片的真实路径：在删除 skipId（及其相连连线）后的图中，
+ * 寻找 A→B 的一条最短路径（含两端点）。
+ * 找不到（该卡片实为必经，或 A 根本不可达 B）以及 skipId 为起点/终点时返回 null。
+ */
+export function findBypassPath(edges: EdgeLike[], aId: string, bId: string, skipId: string): string[] | null {
+  if (skipId === aId || skipId === bId) return null;
+  const rest = edges.filter((e) => e.fromId !== skipId && e.toId !== skipId);
+  return findPath(rest, aId, bId);
+}
+
 /**
  * 在已有图中寻找一个环（用于导入快照校验）。
  * 返回闭环节点序列 [n, …, n]；无环返回 null。
